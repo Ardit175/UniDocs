@@ -1,0 +1,13 @@
+{
+  "name": "unidocs-shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities for UniDocs",
+  "main": "types/index.ts",
+  "types": "types/index.ts",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["types", "shared", "unidocs"],
+  "author": "",
+  "license": "MIT"
+}
