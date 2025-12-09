@@ -9,6 +9,7 @@ import RegisterPage from './pages/RegisterPage';
 import StudentDashboard from './pages/student/Dashboard';
 import PedagogueDashboard from './pages/pedagogue/Dashboard';
 import AdminDashboard from './pages/admin/Dashboard';
+import AdminUsers from './pages/admin/Users';
 import VerificationPage from './pages/VerificationPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -27,6 +28,7 @@ function App() {
             <Route path="/student/dashboard" element={<StudentDashboard />} />
             <Route path="/pedagogue/dashboard" element={<PedagogueDashboard />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/verify/:documentId?" element={<VerificationPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

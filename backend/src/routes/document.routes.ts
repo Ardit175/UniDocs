@@ -30,9 +30,9 @@ router.post('/certificate-enrollment', authorize('student'), async (req: AuthReq
     // Fetch student data
     const studentResult = await pool.query(
       `SELECT 
-        s.id, s.student_id as sid, u.first_name, u.last_name,
-        p.name as program_name, p.faculty, s.enrollment_date,
-        s.current_semester, p.academic_year
+        s.id, s.student_id as sid, u.emri, u.mbiemri,
+        p.emri_shqip as program_name, p.emri_anglisht, s.data_regjistrimit,
+        s.viti_studimit, s.status
       FROM students s
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
@@ -51,13 +51,13 @@ router.post('/certificate-enrollment', authorize('student'), async (req: AuthReq
     // Generate PDF
     const pdfBuffer = await pdfService.generateEnrollmentCertificate({
       documentId,
-      studentName: `${student.first_name} ${student.last_name}`,
+      studentName: `${student.emri} ${student.mbiemri}`,
       studentId: student.sid,
       program: student.program_name,
-      faculty: student.faculty,
-      semester: student.current_semester,
-      academicYear: student.academic_year,
-      enrollmentDate: new Date(student.enrollment_date),
+      faculty: 'Fakulteti i Teknologjisë së Informacionit',
+      semester: student.viti_studimit || 1,
+      academicYear: '2024-2025',
+      enrollmentDate: new Date(student.data_regjistrimit),
       generatedDate,
     });
 
@@ -67,8 +67,8 @@ router.post('/certificate-enrollment', authorize('student'), async (req: AuthReq
     // Save document record
     await pool.query(
       `INSERT INTO documents (
-        id, student_id, document_type, file_path, qr_code, 
-        status, generated_by, generated_at
+        document_id_unique, for_student_id, document_type, file_path, qr_code_data, 
+        status, generated_by_user_id, generated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         documentId,
@@ -76,7 +76,7 @@ router.post('/certificate-enrollment', authorize('student'), async (req: AuthReq
         'enrollment_certificate',
         filePath,
         documentId, // QR code contains document ID
-        'active',
+        'valid',
         req.authUser?.id,
         generatedDate,
       ]
@@ -84,9 +84,9 @@ router.post('/certificate-enrollment', authorize('student'), async (req: AuthReq
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
+      `INSERT INTO activity_logs (user_id, action, entity_type) 
        VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'document_generated', `Generated enrollment certificate: ${documentId}`]
+      [req.authUser?.id, 'document_generated', 'enrollment_certificate']
     );
 
     // Get download URL
@@ -122,8 +122,8 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
     // Fetch student data
     const studentResult = await pool.query(
       `SELECT 
-        s.id, s.student_id as sid, u.first_name, u.last_name,
-        p.name as program_name, p.faculty, s.gpa, s.total_credits, s.completed_credits
+        s.id, s.student_id as sid, u.emri, u.mbiemri,
+        p.emri_anglisht as program_name, s.viti_studimit as current_year
       FROM students s
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
@@ -140,12 +140,12 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
     // Fetch grades
     const gradesResult = await pool.query(
       `SELECT 
-        sub.name as subject, sub.code, g.grade, sub.credits,
-        CONCAT(sub.semester, ' - ', sub.academic_year) as semester
+        sub.emri_anglisht as subject, sub.kodi as code, g.nota, sub.kredite as credits,
+        g.viti_akademik, g.semestri
       FROM grades g
       JOIN subjects sub ON g.subject_id = sub.id
-      WHERE g.student_id = $1 AND g.grade IS NOT NULL
-      ORDER BY sub.academic_year, sub.semester, sub.name`,
+      WHERE g.student_id = $1 AND g.nota IS NOT NULL
+      ORDER BY g.viti_akademik, g.semestri, sub.emri_anglisht`,
       [studentId]
     );
 
@@ -155,18 +155,15 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
     // Generate PDF
     const pdfBuffer = await pdfService.generateTranscript({
       documentId,
-      studentName: `${student.first_name} ${student.last_name}`,
+      studentName: `${student.emri} ${student.mbiemri}`,
       studentId: student.sid,
       program: student.program_name,
-      faculty: student.faculty,
-      gpa: parseFloat(student.gpa) || 0,
-      totalCredits: student.total_credits,
-      completedCredits: student.completed_credits,
+      currentYear: student.current_year,
       grades: gradesResult.rows.map(row => ({
         subject: `${row.code} - ${row.subject}`,
-        grade: parseFloat(row.grade),
+        grade: parseFloat(row.nota),
         credits: row.credits,
-        semester: row.semester,
+        semester: `${row.semestri} - ${row.viti_akademik}`,
       })),
       generatedDate,
     });
@@ -177,8 +174,8 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
     // Save document record
     await pool.query(
       `INSERT INTO documents (
-        id, student_id, document_type, file_path, qr_code, 
-        status, generated_by, generated_at
+        document_id_unique, for_student_id, document_type, file_path, qr_code_data, 
+        status, generated_by_user_id, generated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         documentId,
@@ -186,7 +183,7 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
         'transcript',
         filePath,
         documentId,
-        'active',
+        'valid',
         req.authUser?.id,
         generatedDate,
       ]
@@ -194,9 +191,9 @@ router.post('/transcript', authorize('student'), async (req: AuthRequest, res) =
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
+      `INSERT INTO activity_logs (user_id, action, entity_type) 
        VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'document_generated', `Generated transcript: ${documentId}`]
+      [req.authUser?.id, 'document_generated', 'transcript']
     );
 
     // Get download URL
@@ -234,12 +231,9 @@ router.post('/verification-letter', authorize('student'), async (req: AuthReques
     // Fetch student data
     const studentResult = await pool.query(
       `SELECT 
-        s.id, s.student_id as sid, u.first_name, u.last_name,
-        p.name as program_name, p.faculty, p.academic_year,
-        CASE 
-          WHEN s.is_active THEN 'Active'
-          ELSE 'Inactive'
-        END as enrollment_status
+        s.id, s.student_id as sid, u.emri, u.mbiemri,
+        p.emri_anglisht as program_name, s.viti_studimit,
+        s.status as enrollment_status
       FROM students s
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
@@ -258,12 +252,11 @@ router.post('/verification-letter', authorize('student'), async (req: AuthReques
     // Generate PDF
     const pdfBuffer = await pdfService.generateVerificationLetter({
       documentId,
-      studentName: `${student.first_name} ${student.last_name}`,
+      studentName: `${student.emri} ${student.mbiemri}`,
       studentId: student.sid,
       program: student.program_name,
-      faculty: student.faculty,
+      currentYear: student.viti_studimit,
       enrollmentStatus: student.enrollment_status,
-      academicYear: student.academic_year,
       purpose: data.purpose,
       generatedDate,
     });
@@ -274,27 +267,26 @@ router.post('/verification-letter', authorize('student'), async (req: AuthReques
     // Save document record
     await pool.query(
       `INSERT INTO documents (
-        id, student_id, document_type, file_path, qr_code, 
-        status, generated_by, generated_at, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        document_id_unique, for_student_id, document_type, file_path, qr_code_data, 
+        status, generated_by_user_id, generated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         documentId,
         studentId,
         'verification_letter',
         filePath,
         documentId,
-        'active',
+        'valid',
         req.authUser?.id,
         generatedDate,
-        JSON.stringify({ purpose: data.purpose }),
       ]
     );
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
+      `INSERT INTO activity_logs (user_id, action, entity_type) 
        VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'document_generated', `Generated verification letter: ${documentId}`]
+      [req.authUser?.id, 'document_generated', 'verification_letter']
     );
 
     // Get download URL
@@ -347,7 +339,7 @@ router.post('/participation-certificate', authorize('pedagogue'), async (req: Au
 
     // Fetch student data
     const studentResult = await pool.query(
-      `SELECT s.id, s.student_id as sid, u.first_name, u.last_name
+      `SELECT s.id, s.student_id as sid, u.emri, u.mbiemri
        FROM students s
        JOIN users u ON s.user_id = u.id
        WHERE s.id = $1`,
@@ -363,30 +355,42 @@ router.post('/participation-certificate', authorize('pedagogue'), async (req: Au
     // Fetch course and pedagogue data
     const courseResult = await pool.query(
       `SELECT 
-        sub.name as course_name, sub.code as course_code,
-        sub.semester, sub.academic_year,
-        u.first_name || ' ' || u.last_name as pedagogue_name
+        sub.emri_anglisht as course_name, sub.kodi as course_code,
+        sub.semestri_rekomandueshme,
+        u.emri || ' ' || u.mbiemri as pedagogue_name
        FROM subjects sub
-       JOIN pedagogues p ON sub.pedagogue_id = p.id
+       JOIN pedagogues p ON sub.pedagog_id = p.id
        JOIN users u ON p.user_id = u.id
        WHERE sub.id = $1`,
       [data.courseId]
     );
 
     const course = courseResult.rows[0];
+    
+    // Get academic year from enrollment
+    const enrollmentResult = await pool.query(
+      `SELECT viti_akademik
+       FROM enrollments
+       WHERE student_id = $1 AND subject_id = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [data.studentId, data.courseId]
+    );
+    
+    const academicYear = enrollmentResult.rows[0]?.viti_akademik || '2024-2025';
     const documentId = uuidv4();
     const generatedDate = new Date();
 
     // Generate PDF
     const pdfBuffer = await pdfService.generateParticipationCertificate({
       documentId,
-      studentName: `${student.first_name} ${student.last_name}`,
+      studentName: `${student.emri} ${student.mbiemri}`,
       studentId: student.sid,
       courseName: course.course_name,
       courseCode: course.course_code,
       pedagogueName: course.pedagogue_name,
-      semester: course.semester,
-      academicYear: course.academic_year,
+      semester: course.semestri_rekomandueshme,
+      academicYear: academicYear,
       hoursAttended: data.hoursAttended,
       totalHours: data.totalHours,
       generatedDate,
@@ -398,31 +402,26 @@ router.post('/participation-certificate', authorize('pedagogue'), async (req: Au
     // Save document record
     await pool.query(
       `INSERT INTO documents (
-        id, student_id, document_type, file_path, qr_code, 
-        status, generated_by, generated_at, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        document_id_unique, for_student_id, document_type, file_path, qr_code_data, 
+        status, generated_by_user_id, generated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         documentId,
         data.studentId,
         'participation_certificate',
         filePath,
         documentId,
-        'active',
+        'valid',
         req.authUser?.id,
         generatedDate,
-        JSON.stringify({
-          courseId: data.courseId,
-          hoursAttended: data.hoursAttended,
-          totalHours: data.totalHours,
-        }),
       ]
     );
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
+      `INSERT INTO activity_logs (user_id, action, entity_type) 
        VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'document_generated', `Generated participation certificate: ${documentId}`]
+      [req.authUser?.id, 'document_generated', 'participation_certificate']
     );
 
     // Get download URL
@@ -460,10 +459,10 @@ router.get('/', async (req: AuthRequest, res) => {
       query = `
         SELECT 
           d.id, d.document_type, d.status, d.generated_at,
-          u.first_name || ' ' || u.last_name as generated_by_name
+          u.emri || ' ' || u.mbiemri as generated_by_name
         FROM documents d
-        LEFT JOIN users u ON d.generated_by = u.id
-        WHERE d.student_id = $1
+        LEFT JOIN users u ON d.generated_by_user_id = u.id
+        WHERE d.for_student_id = $1
         ORDER BY d.generated_at DESC
       `;
       params = [studentId];
@@ -472,11 +471,11 @@ router.get('/', async (req: AuthRequest, res) => {
         SELECT 
           d.id, d.document_type, d.status, d.generated_at,
           s.student_id as student_number,
-          u.first_name || ' ' || u.last_name as student_name
+          u.emri || ' ' || u.mbiemri as student_name
         FROM documents d
-        JOIN students s ON d.student_id = s.id
+        JOIN students s ON d.for_student_id = s.id
         JOIN users u ON s.user_id = u.id
-        WHERE d.generated_by = $1
+        WHERE d.generated_by_user_id = $1
         ORDER BY d.generated_at DESC
       `;
       params = [userId];
@@ -485,12 +484,12 @@ router.get('/', async (req: AuthRequest, res) => {
         SELECT 
           d.id, d.document_type, d.status, d.generated_at,
           s.student_id as student_number,
-          us.first_name || ' ' || us.last_name as student_name,
-          ug.first_name || ' ' || ug.last_name as generated_by_name
+          us.emri || ' ' || us.mbiemri as student_name,
+          ug.emri || ' ' || ug.mbiemri as generated_by_name
         FROM documents d
-        JOIN students s ON d.student_id = s.id
+        JOIN students s ON d.for_student_id = s.id
         JOIN users us ON s.user_id = us.id
-        LEFT JOIN users ug ON d.generated_by = ug.id
+        LEFT JOIN users ug ON d.generated_by_user_id = ug.id
         ORDER BY d.generated_at DESC
         LIMIT 100
       `;
@@ -523,11 +522,11 @@ router.get('/:id', async (req: AuthRequest, res) => {
       `SELECT 
         d.*, 
         s.student_id as student_number,
-        u.first_name || ' ' || u.last_name as student_name
+        u.emri || ' ' || u.mbiemri as student_name
        FROM documents d
-       JOIN students s ON d.student_id = s.id
+       JOIN students s ON d.for_student_id = s.id
        JOIN users u ON s.user_id = u.id
-       WHERE d.id = $1`,
+       WHERE d.document_id_unique = $1`,
       [id]
     );
 
@@ -538,11 +537,11 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const document = documentResult.rows[0];
 
     // Check permissions
-    if (role === 'student' && document.student_id !== studentId) {
+    if (role === 'student' && document.for_student_id !== studentId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    if (role === 'pedagogue' && document.generated_by !== userId) {
+    if (role === 'pedagogue' && document.generated_by_user_id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

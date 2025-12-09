@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/Button';
@@ -7,11 +7,24 @@ import Card from '../components/Card';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect to appropriate dashboard when user logs in
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'student') {
+        navigate('/student/dashboard');
+      } else if (user.role === 'pedagogue') {
+        navigate('/pedagogue/dashboard');
+      } else if (user.role === 'admin') {
+        navigate('/admin/dashboard');
+      }
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +33,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      navigate('/student/dashboard'); // Will redirect based on role later
+      // Navigation will happen in useEffect when user state updates
     } catch (err: any) {
       setError(err.response?.data?.message || 'Invalid credentials');
     } finally {

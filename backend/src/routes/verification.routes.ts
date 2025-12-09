@@ -15,18 +15,18 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
     // Fetch document details
     const documentResult = await pool.query(
       `SELECT 
-        d.id, d.document_type, d.status, d.generated_at,
-        d.qr_code, d.metadata,
+        d.id, d.document_id_unique, d.document_type, d.status, d.generated_at,
+        d.qr_code_data,
         s.student_id as student_number,
-        u.first_name || ' ' || u.last_name as student_name,
-        p.name as program_name, p.faculty,
-        ug.first_name || ' ' || ug.last_name as generated_by_name
+        u.emri || ' ' || u.mbiemri as student_name,
+        p.emri_anglisht as program_name,
+        ug.emri || ' ' || ug.mbiemri as generated_by_name
       FROM documents d
-      JOIN students s ON d.student_id = s.id
+      JOIN students s ON d.for_student_id = s.id
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
-      LEFT JOIN users ug ON d.generated_by = ug.id
-      WHERE d.id = $1`,
+      LEFT JOIN users ug ON d.generated_by_user_id = ug.id
+      WHERE d.document_id_unique = $1`,
       [documentId]
     );
 
@@ -40,16 +40,14 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
     const document = documentResult.rows[0];
 
     // Check if document is revoked or invalid
-    if (document.status !== 'active') {
+    if (document.status !== 'valid') {
       // Log verification attempt
       await pool.query(
         `INSERT INTO verification_logs (
-          document_id, verified_by, verification_status, ip_address
-        ) VALUES ($1, $2, $3, $4)`,
+          document_id, ip_address
+        ) VALUES ($1, $2)`,
         [
-          documentId,
-          req.authUser?.id || null,
-          'invalid',
+          document.id,
           req.ip || 'unknown',
         ]
       );
@@ -58,7 +56,7 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
         valid: false,
         message: 'Document has been revoked or is no longer valid',
         document: {
-          id: document.id,
+          id: document.document_id_unique,
           type: document.document_type,
           status: document.status,
         },
@@ -68,12 +66,10 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
     // Log successful verification
     await pool.query(
       `INSERT INTO verification_logs (
-        document_id, verified_by, verification_status, ip_address
-      ) VALUES ($1, $2, $3, $4)`,
+        document_id, ip_address
+      ) VALUES ($1, $2)`,
       [
-        documentId,
-        req.authUser?.id || null,
-        'valid',
+        document.id,
         req.ip || 'unknown',
       ]
     );
@@ -83,7 +79,7 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
       valid: true,
       message: 'Document is authentic and valid',
       document: {
-        id: document.id,
+        id: document.document_id_unique,
         type: document.document_type,
         status: document.status,
         generatedAt: document.generated_at,
@@ -91,10 +87,8 @@ router.get('/:documentId', optionalAuth, async (req: AuthRequest, res) => {
           name: document.student_name,
           studentId: document.student_number,
           program: document.program_name,
-          faculty: document.faculty,
         },
         generatedBy: document.generated_by_name,
-        metadata: document.metadata,
       },
     });
   } catch (error) {

@@ -22,8 +22,8 @@ router.get('/users', async (req: AuthRequest, res) => {
 
     let query = `
       SELECT 
-        u.id, u.email, u.first_name, u.last_name, u.role,
-        u.is_active, u.created_at, u.last_login,
+        u.id, u.email, u.emri, u.mbiemri, u.role,
+        u.is_verified, u.created_at, u.last_login,
         CASE 
           WHEN u.role = 'student' THEN s.student_id
           ELSE NULL
@@ -77,8 +77,8 @@ router.get('/users/:id', async (req: AuthRequest, res) => {
 
     const userResult = await pool.query(
       `SELECT 
-        u.id, u.email, u.first_name, u.last_name, u.role,
-        u.is_active, u.created_at, u.last_login
+        u.id, u.email, u.emri, u.mbiemri, u.role,
+        u.is_verified, u.created_at, u.last_login
       FROM users u
       WHERE u.id = $1`,
       [id]
@@ -94,7 +94,7 @@ router.get('/users/:id', async (req: AuthRequest, res) => {
     let roleData = null;
     if (user.role === 'student') {
       const studentResult = await pool.query(
-        `SELECT s.*, p.name as program_name, p.faculty
+        `SELECT s.*, p.emri_anglisht as program_name
          FROM students s
          JOIN programs p ON s.program_id = p.id
          WHERE s.user_id = $1`,
@@ -126,9 +126,9 @@ router.get('/users/:id', async (req: AuthRequest, res) => {
  * Update user details
  */
 const updateUserSchema = z.object({
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  is_active: z.boolean().optional(),
+  emri: z.string().optional(),
+  mbiemri: z.string().optional(),
+  is_verified: z.boolean().optional(),
 });
 
 router.put('/users/:id', async (req: AuthRequest, res) => {
@@ -140,19 +140,19 @@ router.put('/users/:id', async (req: AuthRequest, res) => {
     const values: any[] = [];
     let paramCount = 1;
 
-    if (data.first_name !== undefined) {
-      updates.push(`first_name = $${paramCount}`);
-      values.push(data.first_name);
+    if (data.emri !== undefined) {
+      updates.push(`emri = $${paramCount}`);
+      values.push(data.emri);
       paramCount++;
     }
-    if (data.last_name !== undefined) {
-      updates.push(`last_name = $${paramCount}`);
-      values.push(data.last_name);
+    if (data.mbiemri !== undefined) {
+      updates.push(`mbiemri = $${paramCount}`);
+      values.push(data.mbiemri);
       paramCount++;
     }
-    if (data.is_active !== undefined) {
-      updates.push(`is_active = $${paramCount}`);
-      values.push(data.is_active);
+    if (data.is_verified !== undefined) {
+      updates.push(`is_verified = $${paramCount}`);
+      values.push(data.is_verified);
       paramCount++;
     }
 
@@ -171,9 +171,9 @@ router.put('/users/:id', async (req: AuthRequest, res) => {
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
+      `INSERT INTO activity_logs (user_id, action, entity_type) 
        VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'user_updated', `Updated user ${id}: ${JSON.stringify(data)}`]
+      [req.authUser?.id, 'user_updated', `user_${id}`]
     );
 
     return res.json({ user: result.rows[0] });
@@ -200,7 +200,7 @@ router.delete('/users/:id', async (req: AuthRequest, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE users SET is_active = false WHERE id = $1 RETURNING *',
+      'UPDATE users SET is_verified = false WHERE id = $1 RETURNING *',
       [id]
     );
 
@@ -210,9 +210,9 @@ router.delete('/users/:id', async (req: AuthRequest, res) => {
 
     // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (user_id, action, details) 
-       VALUES ($1, $2, $3)`,
-      [req.authUser?.id, 'user_deleted', `Deactivated user ${id}`]
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.authUser?.id, 'user_deactivated', 'user', id]
     );
 
     return res.json({ message: 'User deactivated successfully' });
@@ -233,7 +233,7 @@ router.get('/statistics', async (_req: AuthRequest, res) => {
       SELECT 
         role,
         COUNT(*) as count,
-        COUNT(*) FILTER (WHERE is_active = true) as active_count
+        COUNT(*) FILTER (WHERE is_verified = true) as verified_count
       FROM users
       GROUP BY role
     `);
@@ -243,7 +243,7 @@ router.get('/statistics', async (_req: AuthRequest, res) => {
       SELECT 
         document_type,
         COUNT(*) as count,
-        COUNT(*) FILTER (WHERE status = 'active') as active_count
+        COUNT(*) FILTER (WHERE status = 'valid') as valid_count
       FROM documents
       GROUP BY document_type
     `);
@@ -251,8 +251,8 @@ router.get('/statistics', async (_req: AuthRequest, res) => {
     // Recent activity
     const recentActivity = await pool.query(`
       SELECT 
-        al.action, al.details, al.created_at,
-        u.first_name || ' ' || u.last_name as user_name,
+        al.action, al.created_at,
+        u.emri || ' ' || u.mbiemri as user_name,
         u.role
       FROM activity_logs al
       JOIN users u ON al.user_id = u.id
@@ -260,25 +260,14 @@ router.get('/statistics', async (_req: AuthRequest, res) => {
       LIMIT 20
     `);
 
-    // Verification statistics
-    const verificationStats = await pool.query(`
-      SELECT 
-        verification_status,
-        COUNT(*) as count,
-        COUNT(*) FILTER (WHERE verified_at > NOW() - INTERVAL '24 hours') as last_24h
-      FROM verification_logs
-      GROUP BY verification_status
-    `);
-
     // Programs and enrollments
     const programStats = await pool.query(`
       SELECT 
-        p.name as program_name,
-        p.faculty,
+        p.emri_anglisht as program_name,
         COUNT(s.id) as student_count
       FROM programs p
-      LEFT JOIN students s ON p.id = s.program_id AND s.is_active = true
-      GROUP BY p.id, p.name, p.faculty
+      LEFT JOIN students s ON p.id = s.program_id AND s.status = 'aktiv'
+      GROUP BY p.id, p.emri_anglisht
       ORDER BY student_count DESC
     `);
 
@@ -286,7 +275,6 @@ router.get('/statistics', async (_req: AuthRequest, res) => {
       statistics: {
         users: userStats.rows,
         documents: documentStats.rows,
-        verifications: verificationStats.rows,
         programs: programStats.rows,
         recentActivity: recentActivity.rows,
       },

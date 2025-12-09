@@ -5,6 +5,7 @@ import Button from '../../components/Button';
 import api from '../../services/api';
 
 export default function StudentDashboard() {
+  const [activeTab, setActiveTab] = useState<'overview' | 'grades' | 'subjects'>('overview');
   const [stats, setStats] = useState({
     gpa: 0,
     totalCredits: 0,
@@ -12,6 +13,8 @@ export default function StudentDashboard() {
     currentSemester: 0,
   });
   const [documents, setDocuments] = useState<any[]>([]);
+  const [grades, setGrades] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
 
@@ -21,19 +24,25 @@ export default function StudentDashboard() {
 
   const loadData = async () => {
     try {
-      const [profileRes, documentsRes] = await Promise.all([
-        api.get('/students/me'),
-        api.get('/documents'),
+      const [statsRes, documentsRes, gradesRes, subjectsRes] = await Promise.all([
+        api.get('/api/students/statistics'),
+        api.get('/api/documents'),
+        api.get('/api/students/grades'),
+        api.get('/api/students/subjects'),
       ]);
 
+      // Backend returns: {statistics: {gpa, completed_credits, total_enrolled_credits, current_year}}
+      const statistics = statsRes.data.statistics;
       setStats({
-        gpa: profileRes.data.student.gpa || 0,
-        totalCredits: profileRes.data.student.total_credits || 0,
-        completedCredits: profileRes.data.student.completed_credits || 0,
-        currentSemester: profileRes.data.student.current_semester || 0,
+        gpa: parseFloat(Number(statistics.gpa || 0).toFixed(2)),
+        totalCredits: Number(statistics.total_enrolled_credits || 0),
+        completedCredits: Number(statistics.completed_credits || 0),
+        currentSemester: statistics.current_year || 1,
       });
 
       setDocuments(documentsRes.data.documents || []);
+      setGrades(gradesRes.data.grades || []);
+      setSubjects(subjectsRes.data.subjects || []);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -46,16 +55,16 @@ export default function StudentDashboard() {
     try {
       let response;
       if (type === 'enrollment') {
-        response = await api.post('/documents/certificate-enrollment');
+        response = await api.post('/api/documents/certificate-enrollment');
       } else if (type === 'transcript') {
-        response = await api.post('/documents/transcript');
+        response = await api.post('/api/documents/transcript');
       } else if (type === 'verification') {
         const purpose = prompt('Please enter the purpose for this verification letter:');
         if (!purpose || purpose.length < 10) {
           alert('Purpose must be at least 10 characters');
           return;
         }
-        response = await api.post('/documents/verification-letter', { purpose });
+        response = await api.post('/api/documents/verification-letter', { purpose });
       }
 
       if (response?.data.downloadUrl) {
@@ -72,7 +81,7 @@ export default function StudentDashboard() {
 
   const downloadDocument = async (docId: string) => {
     try {
-      const response = await api.get(`/documents/${docId}`);
+      const response = await api.get(`/api/documents/${docId}`);
       if (response.data.downloadUrl) {
         window.open(response.data.downloadUrl, '_blank');
       }
@@ -151,7 +160,45 @@ export default function StudentDashboard() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
+      {/* Tabs Navigation */}
+      <div className="mb-6 border-b border-gray-200">
+        <div className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'overview'
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('grades')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'grades'
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Grades
+          </button>
+          <button
+            onClick={() => setActiveTab('subjects')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'subjects'
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Subjects
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+      <>
       <Card className="p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Generate Documents</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -245,6 +292,110 @@ export default function StudentDashboard() {
           </div>
         )}
       </Card>
+      </>
+      )}
+
+      {/* Grades Tab */}
+      {activeTab === 'grades' && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Grade History</h2>
+          {grades.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>No grades available yet.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credits</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grade</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assessment</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pedagogue</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {grades.map((grade) => (
+                    <tr key={grade.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-900">{grade.subject_name_en}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{grade.subject_code}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{grade.credits}</td>
+                      <td className="px-4 py-3 text-sm font-semibold">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          grade.grade >= 8 ? 'bg-green-100 text-green-700' :
+                          grade.grade >= 6 ? 'bg-blue-100 text-blue-700' :
+                          grade.grade >= 5 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {grade.grade}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{grade.assessment}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{grade.viti_akademik} S{grade.semestri}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{grade.pedagogue_name || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Subjects Tab */}
+      {activeTab === 'subjects' && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrolled Subjects</h2>
+          {subjects.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>No subjects enrolled yet.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {subjects.map((subject) => (
+                <div key={subject.id} className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="font-semibold text-gray-900">{subject.name_en}</h3>
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                          {subject.code}
+                        </span>
+                        <span className="px-2 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded">
+                          {subject.credits} ECTS
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p>Pedagogue: {subject.pedagogue_name || 'TBA'}</p>
+                        <p>Academic Year: {subject.academic_year} - Semester {subject.semestri}</p>
+                        {subject.attendance && (
+                          <p>Attendance: {subject.attendance}%</p>
+                        )}
+                      </div>
+                    </div>
+                    {subject.grade && (
+                      <div className="text-right">
+                        <div className={`inline-block px-3 py-1 rounded-lg font-semibold ${
+                          subject.grade >= 8 ? 'bg-green-100 text-green-700' :
+                          subject.grade >= 6 ? 'bg-blue-100 text-blue-700' :
+                          subject.grade >= 5 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {subject.grade}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{subject.assessment}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </DashboardLayout>
   );
 }

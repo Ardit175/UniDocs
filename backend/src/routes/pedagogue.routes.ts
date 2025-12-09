@@ -22,9 +22,9 @@ router.get('/me', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        p.id, p.department, p.title, p.office_location,
-        p.office_hours, p.bio,
-        u.email, u.first_name, u.last_name, u.created_at
+        p.id, p.pedagog_id, p.departamenti, p.grada_akademike,
+        p.specializimi,
+        u.email, u.emri, u.mbiemri, u.created_at, u.foto_profili_url
       FROM pedagogues p
       JOIN users u ON p.user_id = u.id
       WHERE p.id = $1`,
@@ -58,16 +58,16 @@ router.get('/courses', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        sub.id, sub.code, sub.name, sub.credits, sub.semester,
-        sub.academic_year, sub.description,
+        sub.id, sub.kodi as code, sub.emri_anglisht as name, sub.kredite as credits,
+        sub.semestri_rekomandueshme as semester,
         COUNT(DISTINCT e.student_id) as enrolled_students,
         COUNT(DISTINCT g.student_id) as graded_students
       FROM subjects sub
-      LEFT JOIN enrollments e ON sub.id = e.subject_id AND e.status = 'active'
-      LEFT JOIN grades g ON sub.id = g.subject_id AND g.grade IS NOT NULL
-      WHERE sub.pedagogue_id = $1
+      LEFT JOIN enrollments e ON sub.id = e.subject_id
+      LEFT JOIN grades g ON sub.id = g.subject_id AND g.nota IS NOT NULL
+      WHERE sub.pedagog_id = $1
       GROUP BY sub.id
-      ORDER BY sub.academic_year DESC, sub.semester DESC, sub.name`,
+      ORDER BY sub.emri_anglisht`,
       [pedagogueId]
     );
 
@@ -95,7 +95,7 @@ router.get('/courses/:courseId/students', async (req: AuthRequest, res) => {
 
     // Verify pedagogue teaches this course
     const courseCheck = await pool.query(
-      'SELECT id FROM subjects WHERE id = $1 AND pedagogue_id = $2',
+      'SELECT id FROM subjects WHERE id = $1 AND pedagog_id = $2',
       [courseId, pedagogueId]
     );
 
@@ -105,18 +105,18 @@ router.get('/courses/:courseId/students', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        s.id, s.student_id, s.gpa,
-        u.first_name, u.last_name, u.email,
-        p.name as program_name,
-        e.enrollment_date, e.status,
-        g.grade, g.graded_at
+        s.id, s.student_id,
+        u.emri, u.mbiemri, u.email,
+        p.emri_anglisht as program_name,
+        e.created_at as enrollment_date,
+        g.nota as grade
       FROM enrollments e
       JOIN students s ON e.student_id = s.id
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
       LEFT JOIN grades g ON g.student_id = s.id AND g.subject_id = e.subject_id
       WHERE e.subject_id = $1
-      ORDER BY u.last_name, u.first_name`,
+      ORDER BY u.mbiemri, u.emri`,
       [courseId]
     );
 
@@ -145,11 +145,10 @@ router.get('/statistics', async (req: AuthRequest, res) => {
     const courseStats = await pool.query(
       `SELECT 
         COUNT(DISTINCT sub.id) as total_courses,
-        COUNT(DISTINCT e.student_id) as total_students,
-        COUNT(DISTINCT CASE WHEN sub.academic_year = '2024-2025' THEN sub.id END) as current_courses
+        COUNT(DISTINCT e.student_id) as total_students
       FROM subjects sub
-      LEFT JOIN enrollments e ON sub.id = e.subject_id AND e.status = 'active'
-      WHERE sub.pedagogue_id = $1`,
+      LEFT JOIN enrollments e ON sub.id = e.subject_id
+      WHERE sub.pedagog_id = $1`,
       [pedagogueId]
     );
 
@@ -157,13 +156,13 @@ router.get('/statistics', async (req: AuthRequest, res) => {
     const documentsCount = await pool.query(
       `SELECT COUNT(*) as count
        FROM documents
-       WHERE generated_by = (SELECT user_id FROM pedagogues WHERE id = $1)`,
+       WHERE generated_by_user_id = (SELECT user_id FROM pedagogues WHERE id = $1)`,
       [pedagogueId]
     );
 
     // Get recent activity
     const recentActivity = await pool.query(
-      `SELECT action, details, created_at
+      `SELECT action, created_at
        FROM activity_logs
        WHERE user_id = (SELECT user_id FROM pedagogues WHERE id = $1)
        ORDER BY created_at DESC
@@ -175,16 +174,16 @@ router.get('/statistics', async (req: AuthRequest, res) => {
     const gradeDistribution = await pool.query(
       `SELECT 
         CASE 
-          WHEN grade >= 9 THEN 'A (9-10)'
-          WHEN grade >= 8 THEN 'B (8-9)'
-          WHEN grade >= 7 THEN 'C (7-8)'
-          WHEN grade >= 6 THEN 'D (6-7)'
+          WHEN nota >= 9 THEN 'A (9-10)'
+          WHEN nota >= 8 THEN 'B (8-9)'
+          WHEN nota >= 7 THEN 'C (7-8)'
+          WHEN nota >= 6 THEN 'D (6-7)'
           ELSE 'F (<6)'
         END as grade_range,
         COUNT(*) as count
        FROM grades g
        JOIN subjects sub ON g.subject_id = sub.id
-       WHERE sub.pedagogue_id = $1 AND g.grade IS NOT NULL
+       WHERE sub.pedagog_id = $1 AND g.nota IS NOT NULL
        GROUP BY grade_range
        ORDER BY grade_range`,
       [pedagogueId]

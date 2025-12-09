@@ -154,14 +154,13 @@ CREATE INDEX idx_documents_student ON documents(for_student_id);
 CREATE INDEX idx_activity_logs_user ON activity_logs(user_id);
 
 -- Insert sample programs
-INSERT INTO programs (name, code, faculty, degree_level, duration_years, academic_year) VALUES
-('Computer Engineering', 'CE', 'Fakulteti i Teknologjisë së Informacionit', 'Bachelor', 3, '2024-2025'),
-('Software Engineering', 'SE', 'Fakulteti i Teknologjisë së Informacionit', 'Bachelor', 3, '2024-2025'),
-('Computer Science', 'CS', 'Fakulteti i Teknologjisë së Informacionit', 'Bachelor', 3, '2024-2025'),
-('Information Systems', 'IS', 'Fakulteti i Teknologjisë së Informacionit', 'Bachelor', 3, '2024-2025'),
-('Data Science', 'DS', 'Fakulteti i Teknologjisë së Informacionit', 'Master', 2, '2024-2025'),
-('Cybersecurity', 'CYB', 'Fakulteti i Teknologjisë së Informacionit', 'Master', 2, '2024-2025')
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO programs (emri_shqip, emri_anglisht, lloji, kohezgjatja_vite, total_kredite) VALUES
+('Inxhinieri Kompjuterike', 'Computer Engineering', 'Bachelor', 3, 180),
+('Inxhinieri e Softuerit', 'Software Engineering', 'Bachelor', 3, 180),
+('Shkenca Kompjuterike', 'Computer Science', 'Bachelor', 3, 180),
+('Sisteme Informacioni', 'Information Systems', 'Bachelor', 3, 180),
+('Shkenca e të Dhënave', 'Data Science', 'Master', 2, 120),
+('Sigurisë Kibernetike', 'Cybersecurity', 'Master', 2, 120);
 
 -- Insert default system settings
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
@@ -169,5 +168,4 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
 ('document_validity_days', '365', 'Default document validity period in days'),
 ('system_name', 'UniDocs', 'System name'),
 ('institution_name', 'Universiteti Politeknik i Tiranës', 'Institution name'),
-('faculty_name', 'Fakulteti i Teknologjisë së Informacionit', 'Faculty name')
-ON CONFLICT (setting_key) DO NOTHING;
+('faculty_name', 'Fakulteti i Teknologjisë së Informacionit', 'Faculty name');

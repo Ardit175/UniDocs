@@ -25,7 +25,7 @@ export default function VerificationPage() {
     setVerificationResult(null);
 
     try {
-      const response = await api.get(`/verification/${idToVerify}`);
+      const response = await api.get(`/api/verification/${idToVerify}`);
       setVerificationResult(response.data);
     } catch (error: any) {
       setVerificationResult({

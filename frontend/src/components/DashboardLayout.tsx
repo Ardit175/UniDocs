@@ -16,6 +16,14 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
     navigate('/login');
   };
 
+  const getDashboardLink = () => {
+    if (!user) return '/';
+    if (user.role === 'student') return '/student/dashboard';
+    if (user.role === 'pedagogue') return '/pedagogue/dashboard';
+    if (user.role === 'admin') return '/admin/dashboard';
+    return '/';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation */}
@@ -23,7 +31,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <Link to="/" className="flex items-center space-x-3">
+              <Link to={getDashboardLink()} className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">UD</span>
                 </div>

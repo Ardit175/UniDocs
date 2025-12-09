@@ -4,8 +4,10 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../database/connection';
 import { authLimiter } from '../middleware/rateLimiter';
+import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 /**
  * @route   GET /api/auth/programs
@@ -15,9 +17,9 @@ const router = Router();
 router.get('/programs', async (_req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, code, faculty, degree_level, duration_years 
+      `SELECT id, emri_shqip, emri_anglisht, lloji, kohezgjatja_vite, total_kredite 
        FROM programs 
-       ORDER BY degree_level, name`
+       ORDER BY lloji, emri_shqip`
     );
     
     res.json({
@@ -112,7 +114,7 @@ router.post('/register', authLimiter, async (req, res) => {
       // Generate JWT token
       const token = jwt.sign(
         { userId: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'your-secret-key'
+        JWT_SECRET
       );
       
       // Log activity
@@ -208,7 +210,7 @@ router.post('/login', authLimiter, async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'your-secret-key'
+      JWT_SECRET
     );
     
     // Log activity
@@ -254,27 +256,20 @@ router.post('/login', authLimiter, async (req, res) => {
  * @desc    Get current user
  * @access  Private
  */
-router.get('/me', async (req, res) => {
+router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
+    if (!req.authUser) {
       return res.status(401).json({
         status: 'error',
-        message: 'No token provided',
+        message: 'Not authenticated',
       });
     }
-    
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'your-secret-key'
-    ) as { userId: number; email: string; role: string };
     
     const result = await pool.query(
       `SELECT id, email, role, emri, mbiemri, created_at 
        FROM users 
        WHERE id = $1`,
-      [decoded.userId]
+      [req.authUser.id]
     );
     
     if (result.rows.length === 0) {
@@ -292,9 +287,10 @@ router.get('/me', async (req, res) => {
     });
     
   } catch (error) {
-    return res.status(401).json({
+    console.error('Error in /me endpoint:', error);
+    return res.status(500).json({
       status: 'error',
-      message: 'Invalid token',
+      message: 'Internal server error',
     });
   }
 });
@@ -313,7 +309,7 @@ router.post('/logout', async (req, res) => {
     if (token) {
       const decoded = jwt.verify(
         token,
-        process.env.JWT_SECRET || 'your-secret-key'
+        JWT_SECRET
       ) as { userId: number };
       
       await pool.query(

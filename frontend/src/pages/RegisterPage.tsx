@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Card from '../components/Card';
+import api from '../services/api';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -16,9 +17,24 @@ export default function RegisterPage() {
     confirmPassword: '',
     role: 'student' as 'student' | 'pedagogue',
     studentId: '',
+    programId: '',
   });
+  const [programs, setPrograms] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    loadPrograms();
+  }, []);
+
+  const loadPrograms = async () => {
+    try {
+      const response = await api.get('/api/auth/programs');
+      setPrograms(response.data.programs || []);
+    } catch (error) {
+      console.error('Failed to load programs:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +66,7 @@ export default function RegisterPage() {
         password: formData.password,
         role: formData.role,
         student_id: formData.role === 'student' ? formData.studentId : undefined,
+        program_id: formData.role === 'student' && formData.programId ? parseInt(formData.programId) : undefined,
       });
       navigate('/student/dashboard');
     } catch (err: any) {
@@ -138,14 +155,35 @@ export default function RegisterPage() {
             </div>
 
             {formData.role === 'student' && (
-              <Input
-                label="Student ID"
-                placeholder="ST-2024-XXXX"
-                value={formData.studentId}
-                onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                required
-                disabled={isLoading}
-              />
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Program <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.programId}
+                    onChange={(e) => setFormData({ ...formData, programId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    required
+                    disabled={isLoading}
+                  >
+                    <option value="">Select your program</option>
+                    {programs.map((program) => (
+                      <option key={program.id} value={program.id}>
+                        {program.emri_anglisht}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Input
+                  label="Student ID"
+                  placeholder="ST-2024-XXXX"
+                  value={formData.studentId}
+                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                  required
+                  disabled={isLoading}
+                />
+              </>
             )}
 
             <Input

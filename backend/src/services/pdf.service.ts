@@ -20,10 +20,7 @@ interface EnrollmentCertificateData extends DocumentMetadata {
 
 interface TranscriptData extends DocumentMetadata {
   program: string;
-  faculty: string;
-  gpa: number;
-  totalCredits: number;
-  completedCredits: number;
+  currentYear: number;
   grades: Array<{
     subject: string;
     grade: number;
@@ -36,7 +33,7 @@ interface ParticipationCertificateData extends DocumentMetadata {
   courseName: string;
   courseCode: string;
   pedagogueName: string;
-  semester: string;
+  semester: number;
   academicYear: string;
   hoursAttended: number;
   totalHours: number;
@@ -44,9 +41,8 @@ interface ParticipationCertificateData extends DocumentMetadata {
 
 interface VerificationLetterData extends DocumentMetadata {
   program: string;
-  faculty: string;
+  currentYear: number;
   enrollmentStatus: string;
-  academicYear: string;
   purpose: string;
 }
 
@@ -233,23 +229,11 @@ class PDFService {
           .text(`Name: ${data.studentName}`, 50, 200)
           .text(`Student ID: ${data.studentId}`, 50, 215)
           .text(`Program: ${data.program}`, 50, 230)
-          .text(`Faculty: ${data.faculty}`, 50, 245)
-          .moveDown(1);
-
-        // Academic Performance
-        doc
-          .fontSize(12)
-          .font('Helvetica-Bold')
-          .text('Academic Performance', 50, 275)
-          .font('Helvetica')
-          .fontSize(11)
-          .text(`GPA: ${data.gpa.toFixed(2)}`, 50, 295)
-          .text(`Total Credits: ${data.totalCredits}`, 200, 295)
-          .text(`Completed Credits: ${data.completedCredits}`, 350, 295)
+          .text(`Current Year: ${data.currentYear}`, 50, 245)
           .moveDown(1);
 
         // Grades Table
-        const tableTop = 330;
+        const tableTop = 280;
         const tableLeft = 50;
         
         doc
@@ -408,9 +392,8 @@ class PDFService {
           .text(`This is to verify that ${data.studentName} (Student ID: ${data.studentId}) is a registered student at the Faculty of Information Technology, Polytechnic University of Tirana.`, 50, undefined, { align: 'justify', width: 500 })
           .moveDown(1)
           .text(`Program: ${data.program}`, 50)
-          .text(`Faculty: ${data.faculty}`, 50)
+          .text(`Current Year of Study: ${data.currentYear}`, 50)
           .text(`Enrollment Status: ${data.enrollmentStatus}`, 50)
-          .text(`Academic Year: ${data.academicYear}`, 50)
           .moveDown(2)
           .text(`Purpose: ${data.purpose}`, 50, undefined, { align: 'justify', width: 500 })
           .moveDown(2)

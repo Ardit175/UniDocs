@@ -22,11 +22,10 @@ router.get('/me', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        s.id, s.student_id, s.enrollment_date, s.current_semester,
-        s.gpa, s.total_credits, s.completed_credits, s.is_active,
-        u.email, u.first_name, u.last_name, u.created_at,
-        p.id as program_id, p.name as program_name, p.faculty,
-        p.degree_level, p.duration_years, p.academic_year
+        s.id, s.student_id, s.data_regjistrimit, s.viti_studimit,
+        s.status, u.email, u.emri, u.mbiemri, u.created_at, u.foto_profili_url,
+        p.id as program_id, p.emri_shqip as program_name, p.emri_anglisht,
+        p.lloji, p.kohezgjatja_vite, p.total_kredite
       FROM students s
       JOIN users u ON s.user_id = u.id
       JOIN programs p ON s.program_id = p.id
@@ -61,16 +60,18 @@ router.get('/grades', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        g.id, g.grade, g.graded_at,
-        sub.id as subject_id, sub.code as subject_code, sub.name as subject_name,
-        sub.credits, sub.semester, sub.academic_year,
-        p.first_name || ' ' || p.last_name as professor_name
+        g.id, g.nota as grade, g.vlerësimi as assessment, g.data_provimit as exam_date,
+        g.viti_akademik, g.semestri,
+        sub.id as subject_id, sub.kodi as subject_code, sub.emri_shqip as subject_name,
+        sub.emri_anglisht as subject_name_en, sub.kredite as credits,
+        sub.semestri_rekomandueshme as recommended_semester,
+        u.emri || ' ' || u.mbiemri as pedagogue_name
       FROM grades g
       JOIN subjects sub ON g.subject_id = sub.id
-      LEFT JOIN pedagogues ped ON sub.pedagogue_id = ped.id
-      LEFT JOIN users p ON ped.user_id = p.id
+      LEFT JOIN pedagogues ped ON sub.pedagog_id = ped.id
+      LEFT JOIN users u ON ped.user_id = u.id
       WHERE g.student_id = $1
-      ORDER BY sub.academic_year DESC, sub.semester DESC, sub.name`,
+      ORDER BY g.viti_akademik DESC, g.semestri DESC, sub.emri_shqip`,
       [studentId]
     );
 
@@ -97,18 +98,21 @@ router.get('/subjects', async (req: AuthRequest, res) => {
 
     const result = await pool.query(
       `SELECT 
-        sub.id, sub.code, sub.name, sub.credits, sub.semester,
-        sub.academic_year, sub.description,
-        p.first_name || ' ' || p.last_name as professor_name,
-        e.enrollment_date, e.status,
-        g.grade
+        sub.id, sub.kodi as code, sub.emri_shqip as name, sub.emri_anglisht as name_en,
+        sub.kredite as credits, sub.semestri_rekomandueshme as semester,
+        sub.pershkrimi as description,
+        e.viti_akademik as academic_year, e.semestri, e.prezenca_perqindje as attendance,
+        u.emri || ' ' || u.mbiemri as pedagogue_name,
+        e.created_at as enrollment_date,
+        g.nota as grade, g.vlerësimi as assessment
       FROM enrollments e
       JOIN subjects sub ON e.subject_id = sub.id
-      LEFT JOIN pedagogues ped ON sub.pedagogue_id = ped.id
-      LEFT JOIN users p ON ped.user_id = p.id
-      LEFT JOIN grades g ON g.student_id = e.student_id AND g.subject_id = sub.id
+      LEFT JOIN pedagogues ped ON sub.pedagog_id = ped.id
+      LEFT JOIN users u ON ped.user_id = u.id
+      LEFT JOIN grades g ON g.student_id = e.student_id AND g.subject_id = sub.id 
+        AND g.viti_akademik = e.viti_akademik AND g.semestri = e.semestri
       WHERE e.student_id = $1
-      ORDER BY sub.academic_year DESC, sub.semester DESC, sub.name`,
+      ORDER BY e.viti_akademik DESC, e.semestri DESC, sub.emri_shqip`,
       [studentId]
     );
 
@@ -133,10 +137,18 @@ router.get('/statistics', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Student ID not found' });
     }
 
-    // Get student basic stats
+    // Calculate GPA and credits from grades
     const studentStats = await pool.query(
-      `SELECT gpa, total_credits, completed_credits, current_semester
-       FROM students WHERE id = $1`,
+      `SELECT 
+        s.viti_studimit as current_year,
+        COALESCE(AVG(g.nota), 0) as gpa,
+        COALESCE(SUM(CASE WHEN g.nota >= 5 THEN sub.kredite ELSE 0 END), 0) as completed_credits,
+        COALESCE(SUM(sub.kredite), 0) as total_enrolled_credits
+       FROM students s
+       LEFT JOIN grades g ON g.student_id = s.id
+       LEFT JOIN subjects sub ON g.subject_id = sub.id
+       WHERE s.id = $1
+       GROUP BY s.id, s.viti_studimit`,
       [studentId]
     );
 
@@ -144,15 +156,16 @@ router.get('/statistics', async (req: AuthRequest, res) => {
     const gradeDistribution = await pool.query(
       `SELECT 
         CASE 
-          WHEN grade >= 9 THEN 'A (9-10)'
-          WHEN grade >= 8 THEN 'B (8-9)'
-          WHEN grade >= 7 THEN 'C (7-8)'
-          WHEN grade >= 6 THEN 'D (6-7)'
-          ELSE 'F (<6)'
+          WHEN nota >= 9 THEN 'A (9-10)'
+          WHEN nota >= 8 THEN 'B (8-9)'
+          WHEN nota >= 7 THEN 'C (7-8)'
+          WHEN nota >= 6 THEN 'D (6-7)'
+          WHEN nota >= 5 THEN 'E (5-6)'
+          ELSE 'F (<5)'
         END as grade_range,
         COUNT(*) as count
        FROM grades
-       WHERE student_id = $1 AND grade IS NOT NULL
+       WHERE student_id = $1 AND nota IS NOT NULL
        GROUP BY grade_range
        ORDER BY grade_range`,
       [studentId]
@@ -164,14 +177,14 @@ router.get('/statistics', async (req: AuthRequest, res) => {
         document_type,
         COUNT(*) as count
        FROM documents
-       WHERE student_id = $1
+       WHERE for_student_id = $1
        GROUP BY document_type`,
       [studentId]
     );
 
     // Get recent activity
     const recentActivity = await pool.query(
-      `SELECT action, details, created_at
+      `SELECT action, entity_type, entity_id, created_at
        FROM activity_logs
        WHERE user_id = (SELECT user_id FROM students WHERE id = $1)
        ORDER BY created_at DESC

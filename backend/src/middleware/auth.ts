@@ -47,7 +47,7 @@ export const authenticate = async (
 
     // Fetch user from database
     const userResult = await pool.query(
-      'SELECT id, email, role, is_active FROM users WHERE id = $1',
+      'SELECT id, email, role, is_verified FROM users WHERE id = $1',
       [decoded.userId]
     );
 
@@ -58,9 +58,9 @@ export const authenticate = async (
 
     const user = userResult.rows[0];
 
-    // Check if user is active
-    if (!user.is_active) {
-      res.status(403).json({ error: 'Account is deactivated' });
+    // Check if user is verified
+    if (!user.is_verified) {
+      res.status(403).json({ error: 'Account is not verified' });
       return;
     }
 
