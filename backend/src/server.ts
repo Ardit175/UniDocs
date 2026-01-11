@@ -97,5 +97,5 @@ const startServer = async () => {
 };
 
 startServer();
-
+console.log(`👤 Server Maintenance: Checked by Jorgo`);
 export default app;
